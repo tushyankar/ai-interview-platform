@@ -1,34 +1,31 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { BrowserRouter } from 'react-router-dom';
-import Signup from './pages/Signup';
-import Login from './pages/Login';
-import Dashboard from './pages/Dashboard';
-import { useAuth } from './context/AuthContext';
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Dashboard from './components/Dashboard';
+import AuthPage from './components/AuthPage';
 
-function ProtectedRoute({ children }) {
-  const { token, loading } = useAuth();
-  if (loading) return <p>Loading...</p>;
-  return token ? children : <Navigate to="/login" />;
-}
+const PrivateRoute = ({ children }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <div className="min-h-screen bg-[#0f2d16] text-white flex items-center justify-center">Loading Data...</div>;
+  return user ? children : <Navigate to="/auth" />;
+};
 
-function App() {
+function AppRoutes() {
+  const { user } = useAuth();
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/signup" element={<Signup />} />
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="/" element={<Navigate to="/login" />} />
-      </Routes>
-    </BrowserRouter>
+    <Routes>
+      <Route path="/auth" element={user ? <Navigate to="/" /> : <AuthPage />} />
+      <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+    </Routes>
   );
 }
 
-export default App;
+export default function App() {
+  return (
+    <AuthProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}

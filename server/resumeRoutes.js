@@ -1,35 +1,32 @@
 const express = require('express');
-const fs = require('fs');
+const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const pool = require('./db');
 const authMiddleware = require('./authMiddleware');
-const upload = require('./uploadConfig');
-
 const router = express.Router();
+
+// Store file in memory to parse immediately
+const upload = multer({ storage: multer.memoryStorage() });
 
 router.post('/upload', authMiddleware, upload.single('resume'), async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    if (req.file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Only PDF files are allowed' });
 
-    const dataBuffer = fs.readFileSync(req.file.path);
-    const pdfData = await pdfParse(dataBuffer);
-    const extractedText = pdfData.text;
+    // Extract text from the PDF
+    const data = await pdfParse(req.file.buffer);
+    const resumeText = data.text;
 
+    // Save extracted text to your PostgreSQL database
     await pool.query(
-      'UPDATE users SET resume_text = $1, resume_filename = $2 WHERE id = $3',
-      [extractedText, req.file.filename, req.user.userId]
+      'UPDATE users SET resume_text = $1 WHERE id = $2',
+      [resumeText, req.user.userId]
     );
 
-    res.json({
-      message: 'Resume uploaded and parsed successfully',
-      filename: req.file.filename,
-      preview: extractedText.substring(0, 300),
-    });
+    res.json({ message: 'Resume parsed and saved to SQL successfully', filename: req.file.originalname });
   } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Server error while processing resume' });
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'Failed to upload and parse resume' });
   }
 });
 

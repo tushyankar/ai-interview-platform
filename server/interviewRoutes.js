@@ -1,53 +1,34 @@
 const express = require('express');
-const pool = require('./db');
-const authMiddleware = require('./authMiddleware');
+const authenticateToken = require('./authMiddleware');
 const { generateInterviewQuestions } = require('./aiService');
-
+const { pool } = require('./db');
 const router = express.Router();
 
-router.post('/generate', authMiddleware, async (req, res) => {
+router.post('/generate', authenticateToken, async (req, res) => {
   try {
-    const { role, difficulty } = req.body;
-
-    if (!role || !difficulty) {
-      return res.status(400).json({ error: 'Role and difficulty are required' });
-    }
-
-    const userResult = await pool.query(
-      'SELECT resume_text FROM users WHERE id = $1',
-      [req.user.userId]
+    // Get the latest resume for the user
+    const resumeResult = await pool.query(
+      'SELECT parsed_text FROM resumes WHERE user_id = $1 ORDER BY uploaded_at DESC LIMIT 1',
+      [req.user.id]
     );
 
-    if (!userResult.rows.length || !userResult.rows[0].resume_text) {
-      return res.status(400).json({ error: 'Please upload a resume first' });
+    if (resumeResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No resume found. Please upload a resume first.' });
     }
 
-    const resumeText = userResult.rows[0].resume_text;
+    const resumeText = resumeResult.rows[0].parsed_text;
+    const questions = await generateInterviewQuestions(resumeText);
 
+    // Save generated questions to DB
     const interviewResult = await pool.query(
-      'INSERT INTO interviews (user_id, role, difficulty) VALUES ($1, $2, $3) RETURNING id',
-      [req.user.userId, role, difficulty]
+      'INSERT INTO interviews (user_id, questions) VALUES ($1, $2) RETURNING id',
+      [req.user.id, JSON.stringify(questions)]
     );
 
-    const interviewId = interviewResult.rows[0].id;
-
-    const questions = await generateInterviewQuestions(resumeText, role, difficulty);
-
-    for (const question of questions) {
-      await pool.query(
-        'INSERT INTO questions (interview_id, question_text, question_type) VALUES ($1, $2, $3)',
-        [interviewId, question.question_text, question.question_type || 'general']
-      );
-    }
-
-    res.json({
-      message: 'Interview questions generated successfully',
-      interviewId,
-      questions,
-    });
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).json({ error: 'Failed to generate interview questions' });
+    res.json({ interviewId: interviewResult.rows[0].id, questions });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to generate interview' });
   }
 });
 
