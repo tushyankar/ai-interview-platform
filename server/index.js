@@ -5,11 +5,13 @@ const authRoutes = require('./authRoutes');
 const authMiddleware = require('./authMiddleware');
 const app = express();
 const resumeRoutes = require('./resumeRoutes');
+const interviewRoutes = require('./interviewRoutes');
 
 app.use(cors());
 app.use(express.json());
 app.use('/api/auth', authRoutes);
 app.use('/api/resume', resumeRoutes);
+app.use('/api/interview', interviewRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
